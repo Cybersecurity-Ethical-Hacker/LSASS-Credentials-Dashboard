@@ -44,7 +44,7 @@ Reveals Kerberos encryption types (e.g., RC4 with no pre-auth) and ticket expiry
 Filters noise (e.g., system accounts like SYSTEM, NETWORK SERVICE) to focus on exploitable credentials
 Exportable data (via copy/paste) for integration with tools like Mimikatz, CrackMapExec, or hashcat
 
-Ideal for:
+Ideal for:<br>
 ✔️ Rapidly assessing credential exposure during engagements
 ✔️ Planning attack chains based on reused hashes or weak configurations
 ✔️ Reporting clear evidence of credential risks to clients
