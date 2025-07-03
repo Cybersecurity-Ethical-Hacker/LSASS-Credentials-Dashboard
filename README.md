@@ -56,7 +56,7 @@ This tool helps you:
 
 ## 🚀 Usage
 Simply feed the tool PyPykatz JSON output, and let the dashboard do the rest!
-Export your LSASS dump to JSON using PyPykatz:
+Export your LSASS dump to JSON using PyPykatz.
 
 📍 Command-Line Options:
 ```bash
