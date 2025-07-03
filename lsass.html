@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LSASS Credentials Dashboard v1.0</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.441.0/dist/umd/lucide.min.js"></script>
+  <style>
+    .font-mono {
+      font-family: 'Courier New', Courier, monospace;
+    }
+    .chart-container {
+      position: relative;
+      width: 100%;
+      height: 300px;
+    }
+    .table-container {
+      max-height: 700px;
+      overflow-y: auto;
+    }
+    table {
+      table-layout: fixed;
+    }
+    .master-key-cell {
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+      max-width: 400px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .expandable-cell {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 200px;
+    }
+    .expandable-cell:hover {
+      white-space: normal;
+      overflow: visible;
+      position: relative;
+      z-index: 10;
+      background-color: white;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    .copy-btn {
+      cursor: pointer;
+      margin-left: 4px;
+      color: #6b7280;
+    }
+    .copy-btn:hover {
+      color: #3b82f6;
+    }
+    .cred-type-indicator {
+      display: inline-block;
+      width: 18px;
+      text-align: center;
+      margin-right: 2px;
+    }
+    .sid-admin {
+      color: #ef4444;
+      font-weight: bold;
+    }
+    .sid-system {
+      color: #f59e0b;
+    }
+    .sid-user {
+      color: #10b981;
+    }
+    .column-header {
+      font-weight: 700 !important;
+    }
+    .kerberos-cell {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 350px;
+    }
+    .kerberos-cell:hover {
+      white-space: normal;
+      overflow: visible;
+      position: relative;
+      z-index: 10;
+      background-color: white;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+/* Tooltip Styles */
+.tooltip {
+  visibility: hidden;
+  width: max-content;
+  max-width: 200px;
+  background-color: #333;
+  color: #fff;
+  text-align: center;
+  border-radius: 4px;
+  padding: 4px 8px;
+  position: absolute;
+  z-index: 1000;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.2s;
+  font-size: 12px;
+  font-family: sans-serif;
+  pointer-events: none;
+  white-space: normal;
+}
+
+.group:hover .tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Table Container Fix */
+.table-container {
+  overflow-y: auto;
+  position: relative;
+}
+
+.table-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+@media (max-width: 768px) {
+  .tooltip {
+    transform: translateX(calc(-50% + 20px));
+  }
+}   
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+  <div id="app" class="max-w-7xl mx-auto">
+    <!-- Initial Upload Screen -->
+    <div id="upload-screen">
+      <h1 class="text-3xl font-bold text-gray-800 mb-8 flex items-center gap-3">
+        <i data-lucide="shield" class="text-blue-600"></i>
+        LSASS Credentials Dashboard v1.0
+      </h1>
+      <p class="text-sm text-gray-600 mb-6">Author: Dimitris Chatzidimitris</p>
+      <div class="bg-white rounded-lg shadow-lg p-8 text-center">
+        <i data-lucide="upload" class="mx-auto mb-4 text-gray-400" style="width: 64px; height: 64px;"></i>
+        <h2 class="text-xl font-semibold mb-4">Upload LSASS Credentials JSON</h2>
+        <p class="text-gray-600 mb-6">Select a JSON file containing LSASS credential dump data to analyze</p>
+        <input
+          type="file"
+          accept=".json"
+          id="file-upload"
+          class="block mx-auto mb-4 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+        >
+      </div>
+    </div>
+
+    <!-- Dashboard Screen -->
+    <div id="dashboard-screen" class="hidden">
+      <div class="flex justify-between items-start mb-8">
+      <div>  
+        <h1 class="text-3xl font-bold text-gray-800 flex items-center gap-3">
+          <i data-lucide="shield" class="text-blue-600"></i>
+          LSASS Credentials Dashboard v1.0
+        </h1>
+        <p class="text-sm text-gray-600 mt-1 ml-10">Author: Dimitris Chatzidimitris</p>
+        </div>
+        <div class="flex gap-4 items-center">
+          <button id="toggle-passwords" class="flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors bg-gray-200 text-gray-700 hover:bg-gray-300">
+            <i data-lucide="eye" class="w-4 h-4"></i>
+            <span>Show Hashes</span>
+          </button>
+          <span id="file-name" class="text-sm text-gray-600"></span>
+        </div>
+      </div>
+
+      <!-- Filters and System Note -->
+      <div class="mb-6 flex flex-col gap-4">
+        <div class="flex gap-4 items-center">
+          <label class="block text-sm font-medium text-gray-700">Filter by Host:</label>
+          <select id="host-filter" class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            <option value="all">All Hosts</option>
+          </select>
+          <button id="toggle-system-accounts" class="flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors bg-gray-200 text-gray-700 hover:bg-gray-300">
+            <i data-lucide="users" class="w-4 h-4"></i>
+            <span>Hide System Accounts</span>
+          </button>
+        </div>
+        
+        <!-- Quick Filters -->
+        <div class="flex gap-2 mb-4">
+          <button class="filter-btn bg-red-100 text-red-800 px-3 py-1 rounded-lg text-sm" data-filter="admin">
+            <i data-lucide="alert-triangle" class="w-4 h-4 inline mr-1"></i>Admins
+          </button>
+          <button class="filter-btn bg-purple-100 text-purple-800 px-3 py-1 rounded-lg text-sm" data-filter="cleartext">
+            <i data-lucide="unlock" class="w-4 h-4 inline mr-1"></i>Cleartext
+          </button>
+          <button class="filter-btn bg-orange-100 text-orange-800 px-3 py-1 rounded-lg text-sm" data-filter="reused">
+            <i data-lucide="copy" class="w-4 h-4 inline mr-1"></i>Reused Hashes
+          </button>
+          <button class="filter-btn bg-blue-100 text-blue-800 px-3 py-1 rounded-lg text-sm" data-filter="service">
+            <i data-lucide="server" class="w-4 h-4 inline mr-1"></i>Service Accounts
+          </button>
+          <button class="filter-btn bg-yellow-100 text-yellow-800 px-3 py-1 rounded-lg text-sm" data-filter="nullhash">
+            <i data-lucide="alert-circle" class="w-4 h-4 inline mr-1"></i>NULL Hashes
+          </button>
+        </div>
+        
+        <p class="text-sm text-gray-600 italic">
+          Note: System accounts like IUSR, LOCAL SERVICE, UMFD-*, or MSSQL$* may indicate services (e.g., IIS, drivers, SQL). Verify if these are expected on your system.
+        </p>
+      </div>
+
+      <!-- Summary Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white rounded-lg shadow p-6">
+          <div class="flex items-center">
+            <i data-lucide="user" class="text-blue-600 w-6 h-6"></i>
+            <div class="ml-4">
+              <h3 class="text-lg font-semibold">Total Sessions</h3>
+              <p id="total-sessions" class="text-2xl font-bold text-blue-600">0</p>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6">
+          <div class="flex items-center">
+            <i data-lucide="server" class="text-green-600 w-6 h-6"></i>
+            <div class="ml-4">
+              <h3 class="text-lg font-semibold">Unique Hosts</h3>
+              <p id="unique-hosts" class="text-2xl font-bold text-green-600">0</p>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6">
+          <div class="flex items-center">
+            <i data-lucide="shield" class="text-purple-600 w-6 h-6"></i>
+            <div class="ml-4">
+              <h3 class="text-lg font-semibold">Unique Users</h3>
+              <p id="unique-users" class="text-2xl font-bold text-purple-600">0</p>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6">
+          <div class="flex items-center">
+            <i data-lucide="key" class="text-orange-600 w-6 h-6"></i>
+            <div class="ml-4">
+              <h3 class="text-lg font-semibold">With Credentials</h3>
+              <p id="with-credentials" class="text-2xl font-bold text-orange-600">0</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+        <div class="bg-white rounded-lg shadow p-6">
+          <h3 class="text-lg font-semibold mb-4">Credential Types</h3>
+          <div class="chart-container">
+            <canvas id="credential-types-chart"></canvas>
+          </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-6">
+          <h3 class="text-lg font-semibold mb-4">Account Types</h3>
+          <div class="chart-container">
+            <canvas id="account-types-chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Logon Activity Timeline -->
+      <div class="bg-white rounded-lg shadow p-6 mb-8">
+        <h3 class="text-lg font-semibold mb-4">Logon Activity by Hour</h3>
+        <div class="chart-container">
+          <canvas id="logon-activity-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- Detailed Sessions Table -->
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+          <div class="px-6 py-4 border-b">
+            <h3 class="text-lg font-semibold">Session Details</h3>
+          </div>
+          <div class="table-container overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider column-header">RISK</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider column-header">PWN</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider column-header">USER</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider column-header">DOMAIN</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider column-header">HOST</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider column-header">SID</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider column-header">AUTH ID</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider column-header">SESSION ID</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider column-header">NT HASH</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider column-header">KERBEROS</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider column-header">DPAPI</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider column-header">DPAPI KEY GUID</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider column-header">OTHER CREDS</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider column-header">LOGON TIME</th>
+                </tr>
+              </thead>
+              <tbody id="sessions-table" class="bg-white divide-y divide-gray-200"></tbody>
+            </table>
+          </div>
+          <div id="table-footer" class="px-6 py-4 bg-gray-50 text-sm text-gray-600 hidden"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let jsonData = null;
+      let fileName = '';
+      let showPasswords = false;
+      let selectedHost = 'all';
+      let hideSystemAccounts = false;
+      let stats = null;
+      let charts = {};
+      let hashMap = {};
+      let currentFilter = null;
+
+      const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00'];
+      const SYSTEM_DOMAINS = ['NT AUTHORITY', 'Font Driver Host', 'Window Manager', 'NT SERVICE'];
+
+      function parseData(data) {
+        // Extract logon_sessions from the first key in the JSON
+        const firstKey = Object.keys(data)[0];
+        const sessions = Object.values(data[firstKey].logon_sessions || {});
+
+        const formattedSessions = sessions.map(session => {
+          // Handle N/A username by using msv_creds or kerberos_creds username
+          let username = session.username || 'N/A';
+          if (username === 'N/A' || !username) {
+            if (session.msv_creds?.[0]?.username) {
+              username = session.msv_creds[0].username;
+            } else if (session.kerberos_creds?.[0]?.username) {
+              username = session.kerberos_creds[0].username;
+            }
+          }
+
+          return {
+            authentication_id: session.authentication_id || 'N/A',
+            username,
+            domainname: session.domainname || 'N/A',
+            logon_server: session.logon_server || 'N/A',
+            logon_time: session.logon_time || 'N/A',
+            session_id: session.session_id || 'N/A',
+            sid: session.sid || 'N/A',
+            credentials: {
+              msv: session.msv_creds && session.msv_creds.length > 0 ? session.msv_creds[0] : null,
+              kerberos: session.kerberos_creds && session.kerberos_creds.length > 0 ? session.kerberos_creds[0] : null,
+              wdigest: session.wdigest_creds && session.wdigest_creds.length > 0 ? session.wdigest_creds[0] : null,
+              dpapi: session.dpapi_creds || [],
+              credman: session.credman_creds || [],
+              cloudap: session.cloudap_creds || [],
+              tspkg: session.tspkg_creds || [],
+              ssp: session.ssp_creds || [],
+              kerberos_tickets: session.kerberos_creds?.[0]?.tickets || {}
+            }
+          };
+        });
+
+        // Build hash map for password reuse detection
+        hashMap = {};
+        formattedSessions.forEach(s => {
+          const hash = s.credentials.msv?.NThash;
+          if (hash) hashMap[hash] = (hashMap[hash] || 0) + 1;
+        });
+
+        // Apply filters
+        let filteredSessions = formattedSessions;
+        if (selectedHost !== 'all') {
+          filteredSessions = filteredSessions.filter(s => s.logon_server === selectedHost);
+        }
+        if (hideSystemAccounts) {
+          filteredSessions = filteredSessions.filter(s => !SYSTEM_DOMAINS.includes(s.domainname));
+        }
+        
+        // Apply quick filters if active
+        if (currentFilter) {
+          switch(currentFilter) {
+            case 'admin':
+              filteredSessions = filteredSessions.filter(s => 
+                s.sid.endsWith('-500') || 
+                s.username.toLowerCase().includes('admin')
+              );
+              break;
+            case 'cleartext':
+              filteredSessions = filteredSessions.filter(s => 
+                s.credentials.kerberos?.password
+              );
+              break;
+            case 'reused':
+              filteredSessions = filteredSessions.filter(s => 
+                s.credentials.msv?.NThash && hashMap[s.credentials.msv.NThash] > 1
+              );
+              break;
+            case 'service':
+              filteredSessions = filteredSessions.filter(s => 
+                s.username.toLowerCase().includes('$') || 
+                s.username.toLowerCase().includes('svc_') ||
+                s.username.toLowerCase().includes('service')
+              );
+              break;
+            case 'nullhash':
+              filteredSessions = filteredSessions.filter(s => 
+                s.credentials.msv?.NThash === '31d6cfe0d16ae931b73c59d7e0c089c0'
+              );
+              break;
+          }
+        }
+
+        const hosts = [...new Set(formattedSessions.map(s => s.logon_server).filter(h => h && h !== 'N/A'))];
+        const domains = [...new Set(formattedSessions.map(s => s.domainname).filter(d => d && d !== 'N/A'))];
+        const usernames = [...new Set(formattedSessions.map(s => s.username).filter(u => u && u !== 'N/A'))];
+
+        const credentialTypes = filteredSessions.reduce((acc, session) => {
+          if (session.credentials.msv && session.credentials.msv.NThash) acc.msv++;
+          if (session.credentials.kerberos && (session.credentials.kerberos.aes256 || session.credentials.kerberos.aes128 || session.credentials.kerberos.password)) acc.kerberos++;
+          if (session.credentials.dpapi.length > 0) acc.dpapi++;
+          if (session.credentials.credman.length > 0) acc.credman++;
+          if (session.credentials.cloudap.length > 0) acc.cloudap++;
+          if (session.credentials.tspkg.length > 0) acc.tspkg++;
+          if (session.credentials.ssp.length > 0) acc.ssp++;
+          return acc;
+        }, { msv: 0, kerberos: 0, dpapi: 0, credman: 0, cloudap: 0, tspkg: 0, ssp: 0 });
+
+        const userTypeCounts = filteredSessions.reduce((acc, session) => {
+          const username = session.username.toLowerCase();
+          if (username.includes('administrator')) acc.admin++;
+          else if (username.includes('$')) acc.machine++;
+          else if (username.includes('service') || username.includes('sql')) acc.service++;
+          else if (username !== 'n/a' && username) acc.user++;
+          else acc.system++;
+          return acc;
+        }, { admin: 0, machine: 0, service: 0, user: 0, system: 0 });
+
+        const logonTimes = filteredSessions
+          .filter(s => s.logon_time && s.logon_time !== 'N/A')
+          .map(s => {
+            const date = new Date(s.logon_time);
+            return {
+              hour: date.getHours(),
+              date: date.toDateString()
+            };
+          });
+
+        const hourlyActivity = Array.from({ length: 24 }, (_, i) => ({
+          hour: i,
+          count: logonTimes.filter(l => l.hour === i).length
+        }));
+
+        return {
+          sessions: filteredSessions,
+          totalSessions: filteredSessions.length,
+          hosts,
+          domains,
+          usernames: usernames.length,
+          credentialTypes,
+          userTypeCounts,
+          hourlyActivity,
+          hasPasswords: filteredSessions.some(s => 
+            s.credentials.kerberos?.password || 
+            s.credentials.kerberos?.aes256 || 
+            s.credentials.kerberos?.aes128 || 
+            s.credentials.msv?.NThash || 
+            s.credentials.dpapi.some(dp => dp.sha1_masterkey)
+          )
+        };
+      }
+
+      function maskHash(hash) {
+        if (Array.isArray(hash)) {
+          if (!showPasswords) return hash.map(() => '••••••••••••••••').join('\n');
+          return hash.join('\n');
+        }
+        if (!hash || !showPasswords) return hash ? '••••••••••••••••' : 'N/A';
+        return hash;
+      }
+
+      function getSidClass(sid) {
+        if (!sid) return '';
+        if (sid === 'S-1-5-18') return 'sid-admin'; // Local System
+        if (sid === 'S-1-5-19') return 'sid-system'; // Local Service
+        if (sid === 'S-1-5-20') return 'sid-system'; // Network Service
+        if (sid.startsWith('S-1-5-21') && sid.endsWith('-500')) return 'sid-admin'; // Domain Admin
+        if (sid.startsWith('S-1-5-21')) return 'sid-user'; // Regular user
+        return '';
+      }
+
+      function addCopyButton(element, text) {
+        if (!text || text === 'N/A') return;
+        const btn = document.createElement('span');
+        btn.innerHTML = '<i data-lucide="copy" class="w-4 h-4 copy-btn"></i>';
+        btn.title = 'Copy to clipboard';
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(text);
+          const icon = btn.querySelector('i');
+          icon.classList.remove('copy-btn');
+          icon.classList.add('text-green-500');
+          setTimeout(() => {
+            icon.classList.add('copy-btn');
+            icon.classList.remove('text-green-500');
+          }, 1000);
+        };
+        element.appendChild(btn);
+      }
+
+      function formatKerberosInfo(kerberos) {
+        if (!kerberos) return 'N/A';
+        
+        let info = [];
+        if (kerberos.aes256) info.push('AES256');
+        if (kerberos.aes128) info.push('AES128');
+        if (kerberos.password) info.push('Password');
+        
+        if (kerberos.tickets) {
+          const ticket = kerberos.tickets;
+          if (ticket.KeyType === 23) info.push('<span class="text-red-600">(RC4 - No Pre-Auth)</span>');
+          else if (ticket.KeyType) info.push(`(Type ${ticket.KeyType})`);
+          if (ticket.EndTime) {
+            const timeString = new Date(ticket.EndTime).toLocaleTimeString([], {hour: 'numeric', minute:'2-digit', second:'2-digit'});
+            info.push(`Exp: ${timeString}`);
+          }
+        }
+        
+        return info.join(' ') || 'N/A';
+      }
+
+      function getOtherCredsIndicators(session) {
+        let indicators = '';
+        if (session.credentials.credman.length > 0) indicators += '<span class="cred-type-indicator" title="CredMan">🔑</span>';
+        if (session.credentials.cloudap.length > 0) indicators += '<span class="cred-type-indicator" title="CloudAP">☁️</span>';
+        if (session.credentials.tspkg.length > 0) indicators += '<span class="cred-type-indicator" title="TSPKG">🔐</span>';
+        if (session.credentials.ssp.length > 0) indicators += '<span class="cred-type-indicator" title="SSP">🛡️</span>';
+        return indicators || 'N/A';
+      }
+
+      function getPriorityTag(session) {
+        if (session.credentials.kerberos?.password) 
+          return '<div class="inline-block group relative"><span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs">CLEARTEXT</span><span class="tooltip">Kerberos password in clear text</span></div>';
+        if (session.sid.endsWith('-500')) 
+          return '<div class="inline-block group relative"><span class="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs">DOMAIN ADMIN</span><span class="tooltip">Domain Admin account (SID-500)</span></div>';
+        if (session.credentials.msv?.NThash === '31d6cfe0d16ae931b73c59d7e0c089c0') 
+          return '<div class="inline-block group relative"><span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs">NULL HASH</span><span class="tooltip">Blank/NULL NT hash (no password)</span></div>';
+        return '';
+      }
+
+      function updateUI() {
+        if (!jsonData) {
+          document.getElementById('upload-screen').classList.remove('hidden');
+          document.getElementById('dashboard-screen').classList.add('hidden');
+          return;
+        }
+
+        document.getElementById('upload-screen').classList.add('hidden');
+        document.getElementById('dashboard-screen').classList.remove('hidden');
+
+        stats = parseData(jsonData);
+
+        // Update file name
+        document.getElementById('file-name').textContent = `File: ${fileName}`;
+
+        // Update host filter
+        const hostSelect = document.getElementById('host-filter');
+        hostSelect.innerHTML = '<option value="all">All Hosts</option>';
+        stats.hosts.forEach(host => {
+          const option = document.createElement('option');
+          option.value = host;
+          option.textContent = host;
+          hostSelect.appendChild(option);
+        });
+        hostSelect.value = selectedHost;
+
+        // Update toggle passwords button
+        const toggleBtn = document.getElementById('toggle-passwords');
+        if (toggleBtn) {
+          toggleBtn.innerHTML = `
+            <i data-lucide="${showPasswords ? 'eye-off' : 'eye'}" class="w-4 h-4"></i>
+            <span>${showPasswords ? 'Hide Hashes' : 'Show Hashes'}</span>
+          `;
+          toggleBtn.className = `flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+            showPasswords ? 'bg-blue-200 text-blue-800 hover:bg-blue-300' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`;
+          lucide.createIcons({ parent: toggleBtn });
+        }
+
+        // Update system accounts button
+        const systemAccountsBtn = document.getElementById('toggle-system-accounts');
+        if (systemAccountsBtn) {
+          systemAccountsBtn.innerHTML = `
+            <i data-lucide="${hideSystemAccounts ? 'users' : 'user-x'}" class="w-4 h-4"></i>
+            <span>${hideSystemAccounts ? 'Show System Accounts' : 'Hide System Accounts'}</span>
+          `;
+          systemAccountsBtn.className = `flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+            hideSystemAccounts ? 'bg-blue-200 text-blue-800 hover:bg-blue-300' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`;
+          lucide.createIcons();
+        }
+
+        // Update quick filter buttons
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+          btn.className = `filter-btn px-3 py-1 rounded-lg text-sm flex items-center gap-1 ${
+            currentFilter === btn.dataset.filter 
+              ? `bg-${btn.dataset.filter === 'admin' ? 'red' : btn.dataset.filter === 'cleartext' ? 'purple' : btn.dataset.filter === 'reused' ? 'orange' : btn.dataset.filter === 'service' ? 'blue' : 'yellow'}-200 text-${btn.dataset.filter === 'admin' ? 'red' : btn.dataset.filter === 'cleartext' ? 'purple' : btn.dataset.filter === 'reused' ? 'orange' : btn.dataset.filter === 'service' ? 'blue' : 'yellow'}-800`
+              : `bg-${btn.dataset.filter === 'admin' ? 'red' : btn.dataset.filter === 'cleartext' ? 'purple' : btn.dataset.filter === 'reused' ? 'orange' : btn.dataset.filter === 'service' ? 'blue' : 'yellow'}-100 text-${btn.dataset.filter === 'admin' ? 'red' : btn.dataset.filter === 'cleartext' ? 'purple' : btn.dataset.filter === 'reused' ? 'orange' : btn.dataset.filter === 'service' ? 'blue' : 'yellow'}-800 hover:bg-${btn.dataset.filter === 'admin' ? 'red' : btn.dataset.filter === 'cleartext' ? 'purple' : btn.dataset.filter === 'reused' ? 'orange' : btn.dataset.filter === 'service' ? 'blue' : 'yellow'}-200`
+          }`;
+        });
+
+        // Update summary cards
+        document.getElementById('total-sessions').textContent = stats.totalSessions;
+        document.getElementById('unique-hosts').textContent = stats.hosts.length;
+        document.getElementById('unique-users').textContent = stats.usernames;
+        document.getElementById('with-credentials').textContent = 
+          stats.credentialTypes.msv + stats.credentialTypes.kerberos + stats.credentialTypes.dpapi;
+
+        // Destroy existing charts
+        Object.values(charts).forEach(chart => chart.destroy());
+        charts = {};
+
+        // Credential Types Chart
+        charts.credentialTypes = new Chart(document.getElementById('credential-types-chart'), {
+          type: 'bar',
+          data: {
+            labels: ['MSV', 'Kerberos', 'DPAPI', 'CredMan', 'CloudAP', 'TSPKG', 'SSP'],
+            datasets: [{
+              label: 'Credentials',
+              data: [
+                stats.credentialTypes.msv,
+                stats.credentialTypes.kerberos,
+                stats.credentialTypes.dpapi,
+                stats.credentialTypes.credman,
+                stats.credentialTypes.cloudap,
+                stats.credentialTypes.tspkg,
+                stats.credentialTypes.ssp
+              ],
+              backgroundColor: '#8884d8',
+              barThickness: 'flex'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { grid: { display: false } },
+              y: { beginAtZero: true, grid: { borderDash: [3, 3] } }
+            },
+            plugins: { legend: { display: false } }
+          }
+        });
+
+        // Account Types Chart
+        charts.accountTypes = new Chart(document.getElementById('account-types-chart'), {
+          type: 'pie',
+          data: {
+            labels: ['Admin', 'Machine', 'Service', 'User', 'System'],
+            datasets: [{
+              data: [
+                stats.userTypeCounts.admin,
+                stats.userTypeCounts.machine,
+                stats.userTypeCounts.service,
+                stats.userTypeCounts.user,
+                stats.userTypeCounts.system
+              ].filter(v => v > 0),
+              backgroundColor: COLORS
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'right' },
+              tooltip: { enabled: true }
+            }
+          }
+        });
+
+        // Logon Activity Chart
+        charts.logonActivity = new Chart(document.getElementById('logon-activity-chart'), {
+          type: 'line',
+          data: {
+            labels: stats.hourlyActivity.map(h => h.hour),
+            datasets: [{
+              label: 'Logons',
+              data: stats.hourlyActivity.map(h => h.count),
+              borderColor: '#8884d8',
+              borderWidth: 2,
+              fill: false,
+              tension: 0.1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { grid: { display: false } },
+              y: { beginAtZero: true, grid: { borderDash: [3, 3] } }
+            },
+            plugins: { legend: { display: false } }
+          }
+        });
+
+        // Update sessions table
+        const tableBody = document.getElementById('sessions-table');
+        tableBody.innerHTML = '';
+        stats.sessions.slice(0, 50).forEach(session => {
+          const isAdmin = session.sid.endsWith('-500') || session.username.toLowerCase().includes('admin');
+          const isService = session.username.toLowerCase().includes('$') || session.username.toLowerCase().includes('svc_');
+          const hasCreds = session.credentials.msv?.NThash || session.credentials.kerberos?.password;
+          const hashCount = hashMap[session.credentials.msv?.NThash] || 0;
+          const reuseWarning = hashCount > 1 ? `<span class="bg-orange-100 text-orange-800 px-2 py-1 rounded-full text-xs">REUSED (${hashCount}x)</span>` : '';
+          const dpapiRisk = session.credentials.dpapi.length > 3 ? '<i data-lucide="shield-alert" class="text-red-500 w-4 h-4" title="Multiple DPAPI keys - high credential exposure risk"></i>' : '';
+
+          const row = document.createElement('tr');
+          row.className = `hover:bg-gray-50 ${isAdmin ? 'bg-red-50' : ''} ${hasCreds ? 'border-l-4 border-orange-500' : ''}`;
+          
+          const masterKeys = session.credentials.dpapi.map(dp => dp.sha1_masterkey).filter(k => k);
+          const keyGuids = session.credentials.dpapi.map(dp => dp.key_guid).filter(k => k);
+          
+          row.innerHTML = `
+            <td class="px-6 py-4 whitespace-nowrap relative"> <!-- Added 'relative' here -->
+              ${getPriorityTag(session)}
+              ${isAdmin ? '<div class="inline-block group"><i data-lucide="alert-triangle" class="text-red-500 w-5 h-5"></i><span class="tooltip">Admin Account (SID-500 or username contains "admin")</span></div>' : ''}
+              ${isService ? '<div class="inline-block group"><i data-lucide="server" class="text-blue-500 w-4 h-4"></i><span class="tooltip">Service Account (username contains $ or svc_)</span></div>' : ''}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              ${hasCreds ? '<div class="inline-block group relative"><i data-lucide="key" class="text-green-500 w-4 h-4"></i><span class="tooltip">Credentials Found (NT hash or Kerberos keys)</span></div>' : ''}
+              ${session.credentials.kerberos?.password ? '<div class="inline-block group relative"><i data-lucide="unlock" class="text-purple-500 w-4 h-4"></i><span class="tooltip">Clear-text Password (Kerberos password exposed)</span></div>' : ''}
+              ${dpapiRisk ? '<div class="inline-block group relative"><i data-lucide="shield-alert" class="text-red-500 w-4 h-4"></i><span class="tooltip">DPAPI Risk (multiple master keys found)</span></div>' : ''}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${session.username} ${reuseWarning}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${session.domainname}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${session.logon_server}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 ${getSidClass(session.sid)} expandable-cell">${session.sid}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${session.authentication_id}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${session.session_id}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono ${
+              session.credentials.msv?.NThash && showPasswords ? 'text-red-600' : 'text-gray-400'
+            }">${maskHash(session.credentials.msv?.NThash)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 kerberos-cell">${
+              formatKerberosInfo(session.credentials.kerberos)
+            }</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${
+              session.credentials.dpapi.length > 0 ? `<span class="text-purple-600">✓ ${session.credentials.dpapi.length} Key(s)</span>` : 'N/A'
+            }</td>
+            <td class="px-6 py-4 text-sm text-gray-500 font-mono master-key-cell ${
+              keyGuids.length > 0 && showPasswords ? 'text-purple-600' : 'text-gray-400'
+            }">${maskHash(keyGuids)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${
+              getOtherCredsIndicators(session)
+            }</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${
+              session.logon_time !== 'N/A' ? new Date(session.logon_time).toLocaleString() : 'N/A'
+            }</td>
+          `;
+          
+          // Add copy buttons to relevant cells
+          if (session.credentials.msv?.NThash) {
+            const hashCell = row.querySelector('td:nth-child(9)');
+            addCopyButton(hashCell, session.credentials.msv.NThash);
+          }
+          
+          if (keyGuids.length > 0) {
+            const guidCell = row.querySelector('td:nth-child(12)');
+            addCopyButton(guidCell, keyGuids.join('\n'));
+          }
+          
+          tableBody.appendChild(row);
+        });
+
+        // Update table footer
+        const tableFooter = document.getElementById('table-footer');
+        if (stats.sessions.length > 50) {
+          tableFooter.classList.remove('hidden');
+          tableFooter.textContent = `Showing first 50 of ${stats.sessions.length} sessions`;
+        } else {
+          tableFooter.classList.add('hidden');
+        }
+
+        lucide.createIcons();
+      }
+
+      // Event Listeners
+      document.getElementById('file-upload').addEventListener('change', async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        try {
+          const text = await file.text();
+          jsonData = JSON.parse(text);
+          fileName = file.name;
+          currentFilter = null; // Reset filter on new file load
+          console.log('JSON parsed successfully, sessions:', Object.values(jsonData[Object.keys(jsonData)[0]].logon_sessions).length);
+          updateUI();
+        } catch (error) {
+          console.error('Error parsing JSON:', error);
+          alert('Error parsing JSON file: ' + error.message);
+        }
+      });
+
+      document.getElementById('toggle-passwords').addEventListener('click', () => {
+        showPasswords = !showPasswords;
+        console.log('Show Hashes toggled:', showPasswords);
+        updateUI();
+      });
+
+      document.getElementById('toggle-system-accounts').addEventListener('click', () => {
+        hideSystemAccounts = !hideSystemAccounts;
+        console.log('Hide System Accounts toggled:', hideSystemAccounts);
+        updateUI();
+      });
+
+      document.getElementById('host-filter').addEventListener('change', (e) => {
+        selectedHost = e.target.value;
+        console.log('Host filter changed:', selectedHost);
+        updateUI();
+      });
+
+      // Quick filter buttons
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (currentFilter === btn.dataset.filter) {
+            currentFilter = null; // Toggle off if same filter clicked
+          } else {
+            currentFilter = btn.dataset.filter;
+          }
+          console.log('Quick filter applied:', currentFilter);
+          updateUI();
+        });
+      });
+
+      // Initialize Lucide icons and show upload screen
+      document.addEventListener('DOMContentLoaded', () => {
+        lucide.createIcons();
+        updateUI();
+      });
+    </script>
+  </body>
+</html>
