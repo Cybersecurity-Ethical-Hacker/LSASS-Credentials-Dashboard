@@ -2,7 +2,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![GitHub Issues](https://img.shields.io/github/issues/Cybersecurity-Ethical-Hacker/LSASS-Credentials-Dashboard)](https://github.com/Cybersecurity-Ethical-Hacker/LSASS-Credentials-Dashboard/issues)
-[![GitHub Stars](https://img.shields.io/github/stars/Cybersecurity-Ethical-Hacker/LSASS-Credentials-Dashboard)](https://github.com/Cybersecurity-Ethical-Hacker/LSASS-Credentials-Dashboard/stargazers))
+[![GitHub Stars](https://img.shields.io/github/stars/Cybersecurity-Ethical-Hacker/LSASS-Credentials-Dashboard)](https://github.com/Cybersecurity-Ethical-Hacker/LSASS-Credentials-Dashboard/stargazers)
 [![Contributions Welcome](https://img.shields.io/badge/Contributions-Welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 🔐 LSASS memory dumps contain a goldmine of credential data but extracting actionable insights quickly is a challenge. The LSASS Credentials Dashboard transforms raw dump files into clear, prioritized intelligence for security teams.
