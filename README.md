@@ -33,7 +33,7 @@ Auto-flags Domain Admins (SID-500) and cleartext Kerberos passwords
 Highlights service accounts (ending with $) and NULL hashes for easy privilege escalation paths
 
 - 🔄 Password Reuse Detection
-Identifies reused NT hashes across accounts—critical for lateral movement
+Identifies reused NT hashes across accounts, critical for lateral movement
 Exposes weak credential hygiene (e.g., shared local admin passwords)
 
 - 🔑 DPAPI & Kerberos Analysis
